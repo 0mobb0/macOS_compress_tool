@@ -1,0 +1,38 @@
+name: Build and compatibility
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit and independent archive tests
+        run: scripts/test.sh
+      - name: Build universal macOS app
+        run: scripts/build-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CleanZip-universal
+          path: |
+            dist/CleanZip-1.0.0-universal.zip
+            dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-fixture
+          path: .build/compatibility/
+  windows:
+    needs: macos
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: compatibility-fixture
+          path: fixture
+      - name: Extract Unicode archive on Windows and verify all contents
+        shell: pwsh
+        run: ./scripts/verify-windows.ps1 -Fixture fixture
