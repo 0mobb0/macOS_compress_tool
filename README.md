@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/CleanZip.png" alt="CleanZip 应用图标" width="160">
+</p>
+
 # CleanZip · 清简压缩
 
 一个极简的原生 macOS ZIP 压缩工具，让中文文件名更可靠地在 Windows 上解压。
