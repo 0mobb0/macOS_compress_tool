@@ -21,8 +21,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>CleanZip</string>
 <key>CFBundleDisplayName</key><string>CleanZip · 清简压缩</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>1.0.1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -39,6 +39,6 @@ cp LICENSE "$app/Contents/Resources/LICENSE"
 codesign --force --sign - --timestamp=none "$app"
 codesign --verify --deep --strict "$app"
 # This ZIP distributes the app bundle; user archives use ZipCore.
-COPYFILE_DISABLE=1 ditto -c -k --norsrc --keepParent "$app" dist/CleanZip-1.0.0-universal.zip
-(cd dist && shasum -a 256 CleanZip-1.0.0-universal.zip > SHA256SUMS.txt)
+COPYFILE_DISABLE=1 ditto -c -k --norsrc --keepParent "$app" dist/CleanZip-1.0.1-universal.zip
+(cd dist && shasum -a 256 CleanZip-1.0.1-universal.zip > SHA256SUMS.txt)
 printf 'Built: %s\n' "$app"

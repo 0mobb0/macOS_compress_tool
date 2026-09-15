@@ -20,6 +20,11 @@ public struct ZipProgress: Sendable {
     public let total: Int
     public let name: String
 }
+public struct ZipResult: Sendable {
+    public let entriesWritten: Int
+    /// Paths relative to the archive roots. Links are not followed or archived.
+    public let skippedSymbolicLinks: [String]
+}
 private struct Entry {
     let url: URL
     let name: String
@@ -41,25 +46,33 @@ public enum ZipWriter {
     private static let limit = UInt64(UInt32.max)
 
     /// Creates a new ZIP without replacing an existing destination. Original files are never modified.
+    /// Symbolic links are skipped without following their targets and returned in the result.
+    @discardableResult
     public static func create(sources: [URL], destination: URL, cancellation: Cancellation = Cancellation(),
-                              progress: @escaping (ZipProgress) -> Void = { _ in }) throws {
+                              progress: @escaping (ZipProgress) -> Void = { _ in }) throws -> ZipResult {
         guard !sources.isEmpty else { throw ZipError("请先添加文件或文件夹。") }
         let output = destination.standardizedFileURL.resolvingSymlinksInPath()
         guard !fm.fileExists(atPath: output.path) else { throw ZipError("保存位置已有同名文件，请换一个名字。") }
         let roots = sources.map { $0.standardizedFileURL }
         for root in roots {
+            if try isSymbolicLink(root) { continue }
             let actual = root.resolvingSymlinksInPath().path
             guard output.path != actual && !output.path.hasPrefix(actual + "/") else {
                 throw ZipError("请将 ZIP 保存在所选文件夹之外，以免把压缩包自身打包。")
             }
         }
         var entries: [Entry] = [], names = Set<String>()
+        var skippedLinks: [String] = []
         func visit(_ url: URL, prefix: String) throws {
             try cancellation.check()
             let raw = url.lastPathComponent
             if raw == ".DS_Store" || raw == "__MACOSX" || raw.hasPrefix("._") { return }
-            let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
-            guard values.isSymbolicLink != true else { throw ZipError("暂不支持符号链接：\(url.path)") }
+            // lstat examines the link itself, including broken and circular links.
+            if try isSymbolicLink(url) {
+                skippedLinks.append(prefix + raw)
+                return
+            }
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
             let directory = values.isDirectory == true
             guard directory || values.isRegularFile == true else { throw ZipError("不支持此文件类型：\(url.path)") }
             let component = raw.precomposedStringWithCanonicalMapping
@@ -79,7 +92,12 @@ public enum ZipWriter {
             }
         }
         for root in roots { try visit(root, prefix: "") }
-        guard !entries.isEmpty else { throw ZipError("没有可压缩的文件；所选项目均为 macOS 元数据。") }
+        guard !entries.isEmpty else {
+            if !skippedLinks.isEmpty {
+                throw ZipError("没有可压缩的文件；已跳过 \(skippedLinks.count) 个符号链接。请添加普通文件或实际文件夹。")
+            }
+            throw ZipError("没有可压缩的文件；所选项目均为 macOS 元数据。")
+        }
         let temp = output.deletingLastPathComponent().appendingPathComponent(".cleanzip-\(UUID().uuidString).tmp")
         let fd = open(temp.path, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw ZipError("无法在所选位置创建 ZIP：\(String(cString: strerror(errno)))") }
@@ -144,6 +162,14 @@ public enum ZipWriter {
         // link() publishes the completed archive atomically and fails if destination exists.
         guard link(temp.path, output.path) == 0 else { throw ZipError("无法保存 ZIP（可能已有同名文件）：\(String(cString: strerror(errno)))") }
         progress(ZipProgress(completed: entries.count, total: entries.count, name: output.lastPathComponent))
+        return ZipResult(entriesWritten: entries.count, skippedSymbolicLinks: skippedLinks)
+    }
+    private static func isSymbolicLink(_ url: URL) throws -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else {
+            throw ZipError("无法读取：\(url.path)（\(String(cString: strerror(errno)))）")
+        }
+        return (info.st_mode & S_IFMT) == S_IFLNK
     }
     private static func validate(_ name: String) throws {
         let invalid = CharacterSet(charactersIn: "<>:\"/\\|?*").union(.controlCharacters)

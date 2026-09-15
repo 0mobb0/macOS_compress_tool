@@ -64,12 +64,63 @@ final class ZipCoreTests: XCTestCase {
         try ZipWriter.create(sources: [root.appendingPathComponent("folder")], destination: output)
         XCTAssertNotNil(try Data(contentsOf: output).range(of: Data("folder/空目录/".utf8)))
     }
-    func testSymbolicLinkRejected() throws {
+    func testOnlySymbolicLinksReportsNothingToArchive() throws {
         let target = try file("target")
         let link = root.appendingPathComponent("link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
-        XCTAssertThrowsError(try ZipWriter.create(sources: [link], destination: output))
+        XCTAssertThrowsError(try ZipWriter.create(sources: [link], destination: output)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("已跳过 1 个符号链接"))
+        }
         try assertClean()
+    }
+    func testFileLinkSkippedAndReported() throws {
+        let target = try file("folder/source.txt")
+        let link = root.appendingPathComponent("folder/alias.txt")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        let report = try ZipWriter.create(sources: [root.appendingPathComponent("folder")], destination: output)
+        XCTAssertEqual(report.entriesWritten, 2)
+        XCTAssertEqual(report.skippedSymbolicLinks, ["folder/alias.txt"])
+        XCTAssertNotNil(try Data(contentsOf: output).range(of: Data("folder/source.txt".utf8)))
+        XCTAssertNil(try Data(contentsOf: output).range(of: Data("folder/alias.txt".utf8)))
+    }
+    func testDirectoryLinksAreNotTraversed() throws {
+        _ = try file("folder/source.txt")
+        _ = try file("outside/external-only.txt")
+        for (name, target) in [("cycle", "folder"), ("external", "outside")] {
+            try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("folder/" + name), withDestinationURL: root.appendingPathComponent(target))
+        }
+        let report = try ZipWriter.create(sources: [root.appendingPathComponent("folder")], destination: output)
+        XCTAssertEqual(report.entriesWritten, 2)
+        XCTAssertEqual(report.skippedSymbolicLinks, ["folder/cycle", "folder/external"])
+        XCTAssertNil(try Data(contentsOf: output).range(of: Data("external-only.txt".utf8)))
+    }
+    func testBrokenAndCircularLinksAreSkipped() throws {
+        _ = try file("folder/source.txt")
+        for (name, target) in [("broken", "missing"), ("loopA", "loopB"), ("loopB", "loopA")] {
+            try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent("folder/" + name).path, withDestinationPath: target)
+        }
+        let report = try ZipWriter.create(sources: [root.appendingPathComponent("folder")], destination: output)
+        XCTAssertEqual(report.entriesWritten, 2)
+        XCTAssertEqual(report.skippedSymbolicLinks, ["folder/broken", "folder/loopA", "folder/loopB"])
+    }
+    func testVirtualEnvironmentLinkChainDoesNotAbortProject() throws {
+        _ = try file("project/main.py", text: "print('hello')")
+        _ = try file("project/.venv-lattice/pyvenv.cfg", text: "home = /example/python")
+        let bin = root.appendingPathComponent("project/.venv-lattice/bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: bin.appendingPathComponent("python").path, withDestinationPath: "python3")
+        try FileManager.default.createSymbolicLink(atPath: bin.appendingPathComponent("python3").path, withDestinationPath: "/nonexistent/example/python3")
+        let report = try ZipWriter.create(sources: [root.appendingPathComponent("project")], destination: output)
+        XCTAssertEqual(report.entriesWritten, 5)
+        XCTAssertEqual(report.skippedSymbolicLinks, ["project/.venv-lattice/bin/python", "project/.venv-lattice/bin/python3"])
+    }
+    func testLinkSelectedAlongsideRegularFileIsReported() throws {
+        let source = try file("source.txt")
+        let link = root.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+        let report = try ZipWriter.create(sources: [link, source], destination: output)
+        XCTAssertEqual(report.entriesWritten, 1)
+        XCTAssertEqual(report.skippedSymbolicLinks, ["alias"])
     }
     func testOutputInsideSourceRejected() throws {
         _ = try file("folder/a.txt")

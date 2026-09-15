@@ -10,6 +10,7 @@ import ZipCore
     @Published var progress: Double = 0
     @Published var status = "中文文件名，安心分享。"
     @Published var result: URL?
+    @Published var skippedLinks: [String] = []
     @Published var error: String?
     var cancellation: Cancellation?
     func add(_ urls: [URL]) {
@@ -18,7 +19,7 @@ import ZipCore
             let url = url.standardizedFileURL
             if !sources.contains(url) { sources.append(url) }
         }
-        result = nil; status = "中文文件名，安心分享。"
+        result = nil; skippedLinks = []; status = "中文文件名，安心分享。"
     }
     func choose() {
         let panel = NSOpenPanel()
@@ -35,10 +36,10 @@ import ZipCore
         panel.prompt = "压缩"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         let token = Cancellation(), inputs = sources
-        cancellation = token; busy = true; progress = 0; result = nil; status = "正在检查文件…"
+        cancellation = token; busy = true; progress = 0; result = nil; skippedLinks = []; status = "正在检查文件…"
         Task.detached(priority: .userInitiated) {
             do {
-                try ZipWriter.create(sources: inputs, destination: destination, cancellation: token) { p in
+                let report = try ZipWriter.create(sources: inputs, destination: destination, cancellation: token) { p in
                     Task { @MainActor in
                         guard self.busy, self.cancellation === token else { return }
                         self.progress = Double(p.completed) / Double(max(p.total, 1))
@@ -47,7 +48,10 @@ import ZipCore
                 }
                 await MainActor.run {
                     self.busy = false; self.cancellation = nil
-                    self.result = destination; self.status = "压缩完成，可以分享了。"
+                    self.result = destination; self.skippedLinks = report.skippedSymbolicLinks
+                    self.status = report.skippedSymbolicLinks.isEmpty
+                        ? "压缩完成，可以分享了。"
+                        : "压缩完成，已跳过 \(report.skippedSymbolicLinks.count) 个符号链接。"
                 }
             } catch {
                 await MainActor.run {
@@ -79,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @StateObject private var model = AppModel.shared
     var body: some Scene {
         WindowGroup("CleanZip · 清简压缩") {
-            ContentView(model: model).frame(width: 480, height: 510)
+            ContentView(model: model).frame(width: 480, height: 540)
         }
         .windowResizability(.contentSize)
         .commands {
@@ -92,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @State private var targeted = false
+    @State private var showingSkippedLinks = false
     private let accent = Color(red: 0.12, green: 0.43, blue: 0.38)
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -140,7 +145,7 @@ struct ContentView: View {
                                 HStack {
                                     Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
                                     Spacer()
-                                    Button { model.sources.removeAll { $0 == url }; model.result = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
+                                    Button { model.sources.removeAll { $0 == url }; model.result = nil; model.skippedLinks = []; model.status = "中文文件名，安心分享。" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
                                         .buttonStyle(.plain).disabled(model.busy).help("移除 \(url.lastPathComponent)")
                                 }.font(.system(size: 12)).help(url.path)
                             }
@@ -148,6 +153,8 @@ struct ContentView: View {
                     }
                 }
             }.frame(height: 63, alignment: .top)
+            Text("符号链接会跳过，完成后可查看清单。")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
             VStack(spacing: 10) {
                 if model.busy {
                     ProgressView(value: model.progress).tint(accent)
@@ -156,7 +163,12 @@ struct ContentView: View {
                     Button { NSWorkspace.shared.activateFileViewerSelecting([result]) } label: {
                         Label("在 Finder 中显示", systemImage: "folder").frame(maxWidth: .infinity).padding(.vertical, 8)
                     }.buttonStyle(.borderedProminent).tint(accent)
-                    Button("再次压缩") { model.result = nil }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+                    HStack(spacing: 18) {
+                        Button("再次压缩") { model.result = nil; model.skippedLinks = []; model.status = "中文文件名，安心分享。" }
+                        if !model.skippedLinks.isEmpty {
+                            Button("查看跳过的项目") { showingSkippedLinks = true }
+                        }
+                    }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(accent)
                 } else {
                     Button { model.compress() } label: {
                         Label("生成 ZIP", systemImage: "archivebox").frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -168,6 +180,21 @@ struct ContentView: View {
         }
         .padding(28)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showingSkippedLinks) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("已跳过 \(model.skippedLinks.count) 个符号链接").font(.headline)
+                Text("以下链接未加入 ZIP，也未沿链接读取目标内容；普通文件已正常压缩。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(model.skippedLinks.enumerated()), id: \.offset) { _, path in
+                            Text(path).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack { Spacer(); Button("关闭") { showingSkippedLinks = false }.keyboardShortcut(.defaultAction) }
+            }.padding(24).frame(width: 520, height: 360)
+        }
         .alert("请检查后重试", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("好") { model.error = nil }
         } message: { Text(model.error ?? "") }

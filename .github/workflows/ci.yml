@@ -18,7 +18,7 @@ jobs:
         with:
           name: CleanZip-universal
           path: |
-            dist/CleanZip-1.0.0-universal.zip
+            dist/CleanZip-1.0.1-universal.zip
             dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:

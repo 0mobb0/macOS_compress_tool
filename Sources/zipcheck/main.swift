@@ -6,5 +6,6 @@ if args.count < 3 {
     exit(2)
 }
 do {
-    try ZipWriter.create(sources: args.dropFirst(2).map { URL(fileURLWithPath: $0) }, destination: URL(fileURLWithPath: args[1]))
+    let report = try ZipWriter.create(sources: args.dropFirst(2).map { URL(fileURLWithPath: $0) }, destination: URL(fileURLWithPath: args[1]))
+    for path in report.skippedSymbolicLinks { fputs("已跳过符号链接：\(path)\n", stderr) }
 } catch { fputs(error.localizedDescription + "\n", stderr); exit(1) }

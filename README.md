@@ -10,9 +10,15 @@
 
 ## 安装
 
-下载 [CleanZip-1.0.0-universal.zip](https://github.com/0mobb0/macOS_compress_tool/raw/refs/heads/main/downloads/CleanZip-1.0.0-universal.zip)，解压后将 `CleanZip.app` 拖入「应用程序」，双击打开。支持 **macOS 13 或更高版本，Apple Silicon 与 Intel**。
+下载 [CleanZip-1.0.1-universal.zip](https://github.com/0mobb0/macOS_compress_tool/raw/refs/heads/main/downloads/CleanZip-1.0.1-universal.zip)，解压后将 `CleanZip.app` 拖入「应用程序」，双击打开。支持 **macOS 13 或更高版本，Apple Silicon 与 Intel**。
 
 开源构建使用 ad-hoc 签名，尚未使用 Apple Developer ID 签名或公证。从网络下载后，macOS 可能阻止首次启动：确认来源后，在「系统设置 → 隐私与安全性」中允许打开。无需关闭 Gatekeeper，也不要移除系统级安全限制。
+
+## 1.0.1 修复
+
+修复压缩 Python 虚拟环境等目录时，遇到符号链接（如 `.venv-lattice/bin/python → python3`）就中止整个任务的问题。现在跳过链接并列出清单，保留普通文件。不跟随链接去读取项目外部的文件。单独选择链接而没有任何可打包项目时，会明确提示未生成 ZIP。
+
+虚拟环境里的链接不会变成 Windows 可运行的 Python；分享源码后应在目标系统重新创建虚拟环境。如果需要完整保存链接结构用于 Mac 备份，此工具不适用。
 
 ## 为什么这样处理文件名？
 
@@ -35,7 +41,7 @@ CleanZip 对所有条目同时写入：
 
 - v1 使用 ZIP32：单个文件和最终 ZIP 均须 **小于 4 GiB**，最多 **65,534 个文件及目录**，不支持 ZIP64、分卷或密码。
 - 遇到 Windows 非法字符、保留设备名、末尾空格或句点、超过 255 UTF-16 单元的名称、大小写或 NFC 重名时，停止并提示用户，不悄悄重命名。
-- 不支持符号链接和特殊文件；目录与空文件会保留。Windows 的长路径限制仍取决于目标系统和解压位置，建议使用较短的目标路径。
+- 符号链接会跳过，不跟随、不写入 ZIP；完成后显示跳过数量，并可查看完整清单。目录链接、失效链接和循环链接同样跳过，避免中止整个项目的压缩。特殊文件仍不支持；普通目录与空文件会保留。Windows 的长路径限制仍取决于目标系统和解压位置，建议使用较短的目标路径。
 - 已存在的目标文件不会被覆盖。压缩先写同目录临时文件，成功后原子发布；取消或发生错误时清理临时文件。原子发布需要目标文件系统支持硬链接，建议先保存到本机 APFS/HFS+ 磁盘，再复制到移动硬盘。
 - 不能将 ZIP 保存到所选目录内部。打包期间请避免修改源文件；普通文件的大小和修改时间变化会触发失败，但这不是文件系统快照。
 - 正常退出时需要先完成或取消压缩；强制终止或断电可能留下 `.cleanzip-*.tmp` 临时文件，可在确认应用已退出后删除。
@@ -50,7 +56,7 @@ scripts/build-app.sh
 open dist/CleanZip.app
 ```
 
-产物：`dist/CleanZip.app` 和 `dist/CleanZip-1.0.0-universal.zip`。构建脚本包含原生图标生成及签名校验。
+产物：`dist/CleanZip.app` 和 `dist/CleanZip-1.0.1-universal.zip`。构建脚本包含原生图标生成及签名校验。
 
 命令行调试工具与应用共用压缩核心：
 
@@ -60,7 +66,7 @@ open dist/CleanZip.app
 
 ## 验证
 
-本地验证包括 13 项 XCTest，以及 Python `zipfile` 的 CRC/内容回读、ZIP 本地头与中央目录编码检查、Unicode 扩展字段校验、macOS `ditto` 解压比对和实际压缩率测试。样本包含中日韩文字、emoji、NFD 重音文件名、空格、空目录、空文件和随机二进制数据。
+本地验证包括 18 项 XCTest，以及 Python `zipfile` 的 CRC/内容回读、ZIP 本地头与中央目录编码检查、Unicode 扩展字段校验、macOS `ditto` 解压比对和实际压缩率测试。样本包含中日韩文字、emoji、NFD 重音文件名、空格、空目录、空文件和随机二进制数据。
 
 GitHub Actions 会把 macOS 应用核心生成的样本传到 Windows runner，用 PowerShell `Expand-Archive` 解压并逐一检查 Unicode 文件名及 SHA-256；这验证 Windows 解压 API，不等于 Windows Explorer 图形界面人工实测。**请以本仓库实际运行的绿色 CI 结果为准；Windows 自动测试状态请查看 [Actions](https://github.com/0mobb0/macOS_compress_tool/actions)。**
 

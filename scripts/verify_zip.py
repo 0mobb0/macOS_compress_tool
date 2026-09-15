@@ -66,7 +66,24 @@ def main():
         (folder / '__MACOSX').mkdir()
         (folder / '__MACOSX' / 'junk').write_bytes(b'filtered')
         archive = root / 'compatibility.zip'
-        subprocess.run([executable, str(archive), str(folder)], check=True)
+        # Reproduce virtualenv relative links; broken, external-directory and circular links.
+        outside = root / 'outside'
+        outside.mkdir()
+        (outside / 'must-not-be-included.txt').write_bytes(b'outside fixture')
+        bin_dir = folder / '.venv-lattice' / 'bin'
+        bin_dir.mkdir(parents=True)
+        (bin_dir / 'python').symlink_to('python3')
+        (bin_dir / 'python3').symlink_to(outside / 'missing-python3')
+        (folder / 'external-dir').symlink_to(outside, target_is_directory=True)
+        (folder / 'loop').symlink_to(folder, target_is_directory=True)
+        (folder / 'file-alias').symlink_to('中文报告.txt')
+        expected['跨平台资料/.venv-lattice/'] = b''
+        expected['跨平台资料/.venv-lattice/bin/'] = b''
+        result = subprocess.run([executable, str(archive), str(folder)], check=True, capture_output=True, text=True)
+        assert result.stderr.count('已跳过符号链接：') == 5, result.stderr
+        for link in ['.venv-lattice/bin/python', '.venv-lattice/bin/python3', 'external-dir', 'loop', 'file-alias']:
+            assert '跨平台资料/' + link + '\n' in result.stderr
+
         hashes = verify(archive, expected)
         extracted = root / 'extracted'
         subprocess.run(['/usr/bin/ditto', '-x', '-k', str(archive), str(extracted)], check=True)
@@ -83,7 +100,7 @@ def main():
             export.mkdir(parents=True, exist_ok=True)
             (export / archive.name).write_bytes(archive.read_bytes())
             (export / 'expected.json').write_text(json.dumps(hashes, ensure_ascii=False, indent=2), encoding='utf-8')
-        print(f'PASS: {len(expected)} entries; UTF-8 in both headers; Unicode path extras; CRC/content; NFC; metadata filtering; ditto round trip; DEFLATE compression.')
+        print(f'PASS: {len(expected)} entries; UTF-8 in both headers; Unicode path extras; CRC/content; NFC; metadata filtering; ditto round trip; DEFLATE compression; 5 symlinks skipped and reported.')
 
 if __name__ == '__main__':
     main()
