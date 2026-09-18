@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>CleanZip · 清简压缩</title>
+  <product id="io.github.0mobb0.cleanzip.installer" version="@VERSION@"/>
+  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+  <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
+  <volume-check>
+    <allowed-os-versions><os-version min="@MIN_OS@"/></allowed-os-versions>
+  </volume-check>
+  <welcome file="welcome.html" mime-type="text/html"/>
+  <readme file="readme.html" mime-type="text/html"/>
+  <conclusion file="conclusion.html" mime-type="text/html"/>
+  <choices-outline><line choice="cleanzip"/></choices-outline>
+  <choice id="cleanzip" visible="false" title="CleanZip">
+    <pkg-ref id="io.github.0mobb0.cleanzip.pkg"/>
+  </choice>
+  <pkg-ref id="io.github.0mobb0.cleanzip.pkg" version="@VERSION@" onConclusion="none">CleanZip-component.pkg</pkg-ref>
+  <pkg-ref id="io.github.0mobb0.cleanzip.pkg">
+    <must-close><app id="io.github.0mobb0.cleanzip"/></must-close>
+  </pkg-ref>
+</installer-gui-script>

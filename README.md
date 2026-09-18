@@ -10,9 +10,17 @@
 
 ## 安装
 
-下载 [CleanZip-1.0.1-universal.zip](https://github.com/0mobb0/macOS_compress_tool/raw/refs/heads/main/downloads/CleanZip-1.0.1-universal.zip)，解压后将 `CleanZip.app` 拖入「应用程序」，双击打开。支持 **macOS 13 或更高版本，Apple Silicon 与 Intel**。
+**推荐使用 [CleanZip-1.0.1-installer.pkg 安装器](https://github.com/0mobb0/macOS_compress_tool/raw/refs/heads/main/downloads/CleanZip-1.0.1-installer.pkg)**：双击，按系统安装向导继续，安装后在启动台搜索 **CleanZip**。
 
-开源构建使用 ad-hoc 签名，尚未使用 Apple Developer ID 签名或公证。从网络下载后，macOS 可能阻止首次启动：确认来源后，在「系统设置 → 隐私与安全性」中允许打开。无需关闭 Gatekeeper，也不要移除系统级安全限制。
+- 原生 `.pkg` 安装向导，包含中文欢迎页、说明和完成页。
+- 固定安装到 `/Applications/CleanZip.app`，支持首次安装和更新已有版本；不会去覆盖放在其他位置的副本。
+- 更新前提示退出正在运行的 CleanZip；系统可能要求管理员密码。
+- 支持 **macOS 13 或更高版本，Apple Silicon 与 Intel**。
+- 只安装应用，无额外安装脚本、后台服务或开机启动项，不改动你的源文件或 ZIP。
+
+也可以下载 [ZIP 便携包](https://github.com/0mobb0/macOS_compress_tool/raw/refs/heads/main/downloads/CleanZip-1.0.1-universal.zip)，解压后手动将 `CleanZip.app` 拖入「应用程序」。
+
+开源应用使用 ad-hoc 签名；`.pkg` 安装器尚未使用 Apple Developer ID Installer 签名，二者均未公证。若网络下载的安装器或应用被系统阻止，确认来源后，在「系统设置 → 隐私与安全性」中允许打开。无需关闭系统安全保护。
 
 ## 1.0.1 修复
 
@@ -53,10 +61,11 @@ CleanZip 对所有条目同时写入：
 ```sh
 scripts/test.sh
 scripts/build-app.sh
+scripts/build-installer.sh
 open dist/CleanZip.app
 ```
 
-产物：`dist/CleanZip.app` 和 `dist/CleanZip-1.0.1-universal.zip`。构建脚本包含原生图标生成及签名校验。
+产物：`dist/CleanZip.app`、`dist/CleanZip-1.0.1-universal.zip` 和 `dist/CleanZip-1.0.1-installer.pkg`。构建脚本包含原生图标生成、应用签名校验、安装器载荷逐文件比对，并生成 SHA-256 校验文件。安装器版本和最低系统版本从应用读取。
 
 命令行调试工具与应用共用压缩核心：
 
@@ -70,11 +79,14 @@ open dist/CleanZip.app
 
 GitHub Actions 会把 macOS 应用核心生成的样本传到 Windows runner，用 PowerShell `Expand-Archive` 解压并逐一检查 Unicode 文件名及 SHA-256；这验证 Windows 解压 API，不等于 Windows Explorer 图形界面人工实测。**请以本仓库实际运行的绿色 CI 结果为准；Windows 自动测试状态请查看 [Actions](https://github.com/0mobb0/macOS_compress_tool/actions)。**
 
+安装器使用系统 `pkgbuild` / `productbuild` 构建；`scripts/verify-installer.py` 解包检查目标路径、双架构、系统要求、中文资源、更新策略与应用内容一致性。`scripts/test-installer.sh` 只允许在临时 GitHub Actions runner 上运行，实际验证首次安装、重复安装清理旧文件、应用移位后的固定安装位置及防止降级。它不会在普通本机环境直接安装。
+
 ## 项目结构
 
 - `Sources/CleanZip`：SwiftUI 原生界面
 - `Sources/ZipCore`：文件筛选、Windows 名称检查、ZIP 头与中央目录
 - `Sources/CZip`：64 KiB 缓冲区的流式 DEFLATE、CRC 和线程安全取消
+- `installer`：原生安装向导配置和中文页面
 - `Tests` / `scripts`：测试、跨平台验证和可重复构建
 
 ## 开源协议

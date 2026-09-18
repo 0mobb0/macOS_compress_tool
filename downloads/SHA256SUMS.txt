@@ -1,2 +1,3 @@
 fb301db49c0db773e9975fdca8ac58a915fdbcfd4a51ba7fc9a987a5b309166b  CleanZip-1.0.0-universal.zip
 0d3f07c516004a956975fe8b5baf6c499181093b10a6a13134324956bcfed542  CleanZip-1.0.1-universal.zip
+c423fbf5d3fe11aeb1e02e8f347f92c53cabd1c5a2d38ecf130c65706dbe28f5  CleanZip-1.0.1-installer.pkg

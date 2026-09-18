@@ -14,11 +14,16 @@ jobs:
         run: scripts/test.sh
       - name: Build universal macOS app
         run: scripts/build-app.sh
+      - name: Build and inspect macOS installer
+        run: scripts/build-installer.sh
+      - name: Test real installation and updates
+        run: scripts/test-installer.sh
       - uses: actions/upload-artifact@v4
         with:
           name: CleanZip-universal
           path: |
             dist/CleanZip-1.0.1-universal.zip
+            dist/CleanZip-1.0.1-installer.pkg
             dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
